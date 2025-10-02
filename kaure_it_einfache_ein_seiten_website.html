@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kaure IT</title>
+  <meta name="description" content="KAURE IT – einfache, schnelle Websites und Betreuung für lokale Betriebe." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <script>
+    const STAFF_EMAIL = 'kaure.offizel@gmail.com';
+    const STAFF_PASS  = 'Kaure172';
+    const STORAGE_KEY = 'kaure_anfragen';
+    const SHEETS_ENDPOINT = '';
+    const SHEETS_TOKEN = 'CHANGE_ME_OPTIONAL_TOKEN';
+
+    function isAuthed(){ return !!sessionStorage.getItem('kaure_staff'); }
+    function openLogin(){ document.getElementById('loginModal').style.display='flex'; document.getElementById('loginStatus').textContent=''; }
+    function closeLogin(){ document.getElementById('loginModal').style.display='none'; }
+    function logout(){ sessionStorage.removeItem('kaure_staff'); hideStaff(); updateNavForAuth(); updateCount(); showFlash('Du wurdest erfolgreich ausgeloggt.'); }
+
+    function doLogin(e){
+      e.preventDefault();
+      const { user, pass } = Object.fromEntries(new FormData(e.target));
+      if(user===STAFF_EMAIL && pass===STAFF_PASS){
+        sessionStorage.setItem('kaure_staff', JSON.stringify({ user, t: Date.now() }));
+        closeLogin(); showStaff(); updateNavForAuth();
+      } else {
+        document.getElementById('loginStatus').textContent = 'Falsche Zugangsdaten.';
+      }
+    }
+
+    function showStaff(){
+      const s=document.getElementById('staff');
+      if(s){ s.style.display='block'; }
+      loadAnfragen();
+      window.location.hash='staff';
+    }
+    function hideStaff(){ const s=document.getElementById('staff'); if(s) s.style.display='none'; if(location.hash==='#staff') history.replaceState(null,'',' '); }
+
+    function formatTime(iso){ try{ return new Date(iso).toLocaleString(); } catch { return iso; } }
+    function escapeHtml(str){ return String(str).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    // Read list and ensure status field exists
+    function readList(){
+      const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+      // normalize entries to include status ('pending'|'accepted'|'rejected') and id
+      return list.map((it,idx)=>({ id: it.id||('id_'+(it.ts||Date.now())+'_'+idx), status:it.status||'pending', ts:it.ts||new Date().toISOString(), name:it.name||'', email:it.email||'', message:it.message||'' }));
+    }
+
+    function saveList(list){ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+
+    function loadAnfragen(){
+      const list=readList();
+      const tbody=document.querySelector('#anfragenTable tbody');
+      if(!tbody) return;
+      tbody.innerHTML='';
+      for(const a of list){
+        const tr=document.createElement('tr');
+        const statusBadge = a.status==='accepted'? '✓' : (a.status==='rejected'? '✖' : '');
+        tr.innerHTML=
+          `<td>${formatTime(a.ts)}</td>
+           <td>${escapeHtml(a.name||'')}</td>
+           <td><a class="link" href="mailto:${encodeURI(a.email||'')}">${escapeHtml(a.email||'')}</a></td>
+           <td>${escapeHtml(a.message||'')}</td>
+           <td style="white-space:nowrap">
+             <button class='action accept' data-id='${a.id}' title='Annehmen'>✓</button>
+             <button class='action reject' data-id='${a.id}' title='Ablehnen'>✖</button>
+             <button class='action del' data-id='${a.id}' title='Löschen'>🗑</button>
+             <span class='status-text' data-id='${a.id}'>${statusBadge}</span>
+           </td>`;
+        tbody.appendChild(tr);
+      }
+      // attach handlers
+      document.querySelectorAll('button.action.accept').forEach(b=>b.onclick=()=>setStatus(b.dataset.id,'accepted'));
+      document.querySelectorAll('button.action.reject').forEach(b=>b.onclick=()=>setStatus(b.dataset.id,'rejected'));
+      document.querySelectorAll('button.action.del').forEach(b=>b.onclick=()=>deleteEntry(b.dataset.id));
+      updateCount();
+    }
+
+    function setStatus(id,newStatus){
+      const list=readList();
+      const idx=list.findIndex(x=>x.id===id);
+      if(idx===-1) return;
+      list[idx].status=newStatus;
+      saveList(list);
+      loadAnfragen();
+      showFlash('Status aktualisiert.');
+    }
+
+    function deleteEntry(id){
+      let list=readList();
+      list=list.filter(x=>x.id!==id);
+      saveList(list);
+      loadAnfragen();
+      showFlash('Eintrag gelöscht.');
+    }
+
+    function updateCount(){ const list=readList(); const el=document.getElementById('countInfo'); if(el) el.textContent=list.length+' Anfrage(n) gespeichert'; }
+
+    function handleSubmit(e){
+      e.preventDefault();
+      const data=Object.fromEntries(new FormData(e.target));
+      const entry={ id:'id_'+Date.now(), ts:new Date().toISOString(), name:(data.name||'').trim(), email:(data.email||'').trim(), message:(data.message||'').trim(), status:'pending' };
+      const list=readList(); list.unshift(entry); saveList(list);
+      document.getElementById('status').textContent='Danke! Deine Anfrage wurde gespeichert.';
+      e.target.reset();
+      updateCount();
+      if(document.getElementById('staff').style.display!== 'none'){ loadAnfragen(); }
+    }
+
+    function exportToSheets(){
+      const list=readList();
+      if(!list.length){ showFlash('Keine Anfragen gespeichert.'); return; }
+      if(!SHEETS_ENDPOINT){ showFlash('Kein Sheets-Endpunkt gesetzt.'); return; }
+      fetch(SHEETS_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ token:SHEETS_TOKEN, rows:list })})
+        .then(()=>showFlash('Anfragen erfolgreich an Google Sheets gesendet.'))
+        .catch(err=>{console.error(err); showFlash('Fehler beim Senden.');});
+    }
+
+    function clearAnfragen(){
+      if(!confirm('Wirklich alle Anfragen löschen?')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      loadAnfragen();
+      showFlash('Liste geleert.');
+    }
+
+    function updateNavForAuth(){
+      const container=document.getElementById('nav-cta');
+      if(!container) return;
+      container.innerHTML='';
+      if(isAuthed()){
+        const staffBtn=document.createElement('button'); staffBtn.className='btn'; staffBtn.textContent='Mitarbeiter-Infos'; staffBtn.onclick=showStaff;
+        const logoutBtn=document.createElement('button'); logoutBtn.className='btn'; logoutBtn.textContent='Logout'; logoutBtn.style.marginLeft='8px'; logoutBtn.onclick=logout;
+        container.appendChild(staffBtn); container.appendChild(logoutBtn);
+      } else {
+        const loginBtn=document.createElement('button'); loginBtn.className='btn'; loginBtn.textContent='Login Mitarbeiter'; loginBtn.onclick=openLogin;
+        container.appendChild(loginBtn);
+      }
+    }
+
+    function showFlash(msg){ const f=document.getElementById('flash'); f.textContent=msg; f.classList.add('show'); setTimeout(()=>f.classList.remove('show'),3000); }
+
+    document.addEventListener('DOMContentLoaded',()=>{
+      document.getElementById('year').textContent=new Date().getFullYear();
+      updateNavForAuth();
+      updateCount();
+      if(location.hash==='#staff'){ isAuthed()?showStaff():openLogin(); }
+    });
+  </script>
+
+  <style>
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#0b0c10;color:#e8eaed}
+    .container{max-width:1100px;margin:0 auto;padding:24px}
+    header{position:sticky;top:0;background:#0b0c10c9;backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+    .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#e8eaed}
+    .k-circle{height:36px;width:36px;border-radius:50%;background:#e0b15c;display:flex;align-items:center;justify-content:center;font-weight:700;color:#0b0c10;font-size:18px;box-shadow:0 0 6px rgba(224,177,92,0.6);transition:all .2s ease}
+    .k-circle:hover{transform:scale(1.1);box-shadow:0 0 12px rgba(224,177,92,0.9)}
+    .logo-text{font-size:1.1rem;font-weight:600;color:#e0b15c}
+    .btn{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:#111;color:#fff;cursor:pointer}
+    .card{background:#111318;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px;margin-top:14px}
+    form.contact-form{background:#111318;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px}
+    form.contact-form label{display:block;margin-top:12px;font-weight:500}
+    form.contact-form input,form.contact-form textarea{width:100%;padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:#1a1d25;color:#e8eaed;margin-top:4px}
+    form.contact-form button{margin-top:16px}
+    .grid-2{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:820px){.grid-2{grid-template-columns:1fr 1fr}}
+    .card h3{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+    .card .icon{font-size:18px;opacity:.95}
+    #services-list{list-style:none;padding-left:0;margin:0}
+    #services-list li{margin:6px 0;display:flex;align-items:center;gap:8px}
+    #services-list .check{color:#e0b15c;font-weight:bold}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left}
+    td:nth-child(5){width:170px;text-align:right}
+    .action{margin-left:6px;padding:6px 8px;border-radius:8px;border:0;background:transparent;color:#e8eaed;cursor:pointer}
+    .action.accept{color:#78c26b}
+    .action.reject{color:#ff6b6b}
+    .action.del{color:#ff9b9b}
+    .status-text{margin-left:8px;color:#a6b0bf}
+    #flash{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#12161e;padding:10px 14px;border-radius:10px;opacity:0;transition:opacity .2s}
+    #flash.show{opacity:1}
+  </style>
+</head>
+<body>
+  <header>
+    <a id="brand" class="brand" href="#top">
+      <div class="k-circle">K</div>
+      <span class="logo-text">KAURE IT</span>
+    </a>
+    <nav><span id="nav-cta"></span></nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>KAURE IT – Dein Partner für smarte Weblösungen</h2>
+      <p>Wir verbinden klassisches Webdesign mit KI und setzen Projekte in kürzester Zeit professionell um – startklar und leicht zu pflegen.</p>
+    </section>
+
+    <!-- Info-Karten -->
+    <section class="grid-2">
+      <article class="card">
+        <h3><span class="icon">⚡</span> Schnelle Umsetzung dank KI</h3>
+        <p>Mit moderner Technologie und KI realisieren wir Projekte zügig, effizient und zuverlässig.</p>
+      </article>
+      <article class="card">
+        <h3><span class="icon">🔧</span> Einfache Wartung & Updates</h3>
+        <p>Auf Wunsch übernehmen wir regelmäßig Updates, Sicherheit und kleine Änderungen – damit deine Website stabil läuft.</p>
+      </article>
+      <article class="card">
+        <h3><span class="icon">🏪</span> Für kleine Betriebe gemacht</h3>
+        <p>Ideal für lokale Geschäfte, Restaurants, Vereine oder Dienstleister, die eine klare, unkomplizierte Webpräsenz brauchen.</p>
+      </article>
+      <article class="card">
+        <h3><span class="icon">✨</span> Individuelle Erweiterungen</h3>
+        <p>Kontaktformulare, Bildergalerien oder News‑Bereiche bauen wir flexibel nach Bedarf ein.</p>
+      </article>
+    </section>
+
+    <!-- Zusammenfassung / Leistungen-Liste -->
+    <section class="card">
+      <h3>Unsere Leistungen im Überblick</h3>
+      <ul id="services-list">
+        <li><span class="check">✔</span> Moderne Websites mit klarem Design</li>
+        <li><span class="check">✔</span> Sicherheit & regelmäßige Wartung</li>
+        <li><span class="check">✔</span> Optimiert für Handy, Tablet & PC</li>
+        <li><span class="check">✔</span> Schnelle Umsetzung dank KI</li>
+        <li><span class="check">✔</span> Persönlicher Support</li>
+      </ul>
+    </section>
+
+    <section id="kontakt">
+      <h2>Kontakt</h2>
+      <form class="contact-form" onsubmit="handleSubmit(event)">
+        <label>Name
+          <input required name="name" placeholder="Dein Name"/>
+        </label>
+        <label>E‑Mail
+          <input required type="email" name="email" placeholder="deine@mail.at"/>
+        </label>
+        <label>Nachricht
+          <textarea required name="message" rows="4" placeholder="Deine Nachricht..."></textarea>
+        </label>
+        <button class="btn" type="submit">Senden</button>
+        <p id="status"></p>
+      </form>
+    </section>
+
+    <section id="staff" style="display:none">
+      <div class="card">
+        <h2>Mitarbeiterbereich</h2>
+        <div style="margin:10px 0">
+          <button class="btn" type="button" onclick="exportToSheets()">An Google Sheets senden</button>
+          <button class="btn" type="button" onclick="clearAnfragen()">Liste leeren</button>
+          <span id="countInfo" style="margin-left:10px"></span>
+        </div>
+        <table id="anfragenTable"><thead><tr><th>Zeit</th><th>Name</th><th>E‑Mail</th><th>Nachricht</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="container">© <span id="year"></span> KAURE IT · <a href="mailto:kaure.offizel@gmail.com">kaure.offizel@gmail.com</a></footer>
+  <div id="flash"></div>
+
+  <div id="loginModal" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60">
+    <div class="card" style="width:min(480px,90%)">
+      <h2>Mitarbeiter-Login</h2>
+      <form onsubmit="doLogin(event)">
+        <label>E‑Mail<br><input name="user" type="email" required placeholder="kaure.offizel@gmail.com"/></label><br><br>
+        <label>Passwort<br><input name="pass" type="password" required placeholder="Kaure172"/></label><br>
+        <div style="margin-top:10px"><button class="btn" type="button" onclick="closeLogin()">Abbrechen</button><button class="btn" type="submit">Einloggen</button></div>
+        <p id="loginStatus"></p>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
