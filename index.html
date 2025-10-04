@@ -127,13 +127,41 @@
       showFlash('Liste geleert.');
     }
 
-   function updateNavForAuth(){
+function updateNavForAuth(){
   const container = document.getElementById('nav-cta');
   if (!container) return;
-
   container.innerHTML = '';
 
   if (isAuthed()) {
+    const staffBtn = document.createElement('button');
+    staffBtn.className = 'btn';
+    staffBtn.textContent = '📅 Mitarbeiter-Infos';
+    staffBtn.onclick = () => window.location.assign('mitarbeiterindex.html');
+
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn';
+    logoutBtn.textContent = 'Logout';
+    logoutBtn.style.marginLeft = '8px';
+    logoutBtn.onclick = logout;
+
+    container.appendChild(staffBtn);
+    container.appendChild(logoutBtn);
+  } else {
+    const loginBtn = document.createElement('button');
+    loginBtn.className = 'btn';
+    loginBtn.textContent = 'Login Mitarbeiter';
+    loginBtn.onclick = openLogin;
+    container.appendChild(loginBtn);
+
+    const staffBtn = document.createElement('button');
+    staffBtn.className = 'btn';
+    staffBtn.textContent = '📅 Mitarbeiter-Infos';
+    staffBtn.style.marginLeft = '8px';
+    staffBtn.onclick = () => window.location.assign('mitarbeiterindex.html');
+    container.appendChild(staffBtn);
+  }
+}
+
  
 function updateNavForAuth(){
   const container = document.getElementById('nav-cta');
