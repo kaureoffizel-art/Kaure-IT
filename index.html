@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KAURE IT – Start</title>
+  <meta name="description" content="KAURE IT – einfache Ein-Seiten-Website mit Login und Mitarbeiter-Infos." />
+  <style>
+    :root{ --bg:#0f1115; --card:#161a24; --line:#232737; --text:#e8e8ea; --muted:#a7aab3; --brand:#9cc2ff; }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+    .wrap{ max-width:1100px; margin:0 auto; padding:18px; }
+    header{ border-bottom:1px solid var(--line); background:#141821; }
+    header .row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .brand{ font-weight:800; letter-spacing:.4px; color:#fff; }
+    .brand em{ color:var(--brand); font-style:normal; }
+    nav{ display:flex; align-items:center; gap:8px; }
+    .btn{ display:inline-block; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#1a1f2b; color:var(--text); text-decoration:none; line-height:1; cursor:pointer; }
+    .btn + .btn{ margin-left:8px; }
+    .btn:hover{ filter:brightness(1.1); }
+    main .hero{ padding:32px 0; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; }
+    .muted{ color:var(--muted); }
+    footer{ border-top:1px solid var(--line); color:var(--muted); }
+    /* Login-Modal */
+    .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:1000; }
+    .modal.show{ display:flex; }
+    .modal .box{ width:min(420px,96vw); background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+    .modal .box h3{ margin-top:0 }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    input{ padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0f1115; color:#e8e8ea; width:100%; }
+    label{ display:block; width:100%; }
+    .right{ display:flex; justify-content:flex-end; gap:8px; }
+    /* Flash */
+    #flash{ position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:#1d2533; border:1px solid var(--line); color:#e8e8ea; padding:10px 12px; border-radius:10px; opacity:0; transition:opacity .25s ease, transform .25s ease; pointer-events:none; z-index:9999; }
+    #flash.show{ opacity:1; transform:translate(-50%,-6px); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="row">
+        <div class="brand">K<span style="opacity:.6">AURE</span> <em>IT</em></div>
+        <nav>
+          <!-- Hier rendert die Funktion die Buttons hinein -->
+          <span id="nav-cta">
+            <!-- Fallback, falls JS noch nicht geladen ist -->
+            <a class="btn" href="mitarbeiterindex.html">📅 Mitarbeiter-Infos</a>
+          </span>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div class="card">
+        <h2>Willkommen bei KAURE&nbsp;IT</h2>
+        <p class="muted">Dies ist die Startseite. Über den Button oben gelangst du zu den internen <strong>Mitarbeiter-Infos</strong> (Wochenplan). Zum Testen gibt es einen Demo-Login.</p>
+        <ul class="muted">
+          <li>Test E-Mail: <code>kaure.offizel@gmail.com</code></li>
+          <li>Test Passwort: <code>kaure172</code></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap"><small>© <span id="year"></span> KAURE IT – intern</small></div>
+  </footer>
+
+  <!-- Login-Modal -->
+  <div id="loginModal" class="modal" aria-hidden="true">
+    <div class="box">
+      <h3>Mitarbeiter Login</h3>
+      <form id="loginForm">
+        <label>
+          <div class="muted">E-Mail</div>
+          <input id="loginEmail" type="email" placeholder="E-Mail" required />
+        </label>
+        <label>
+          <div class="muted">Passwort</div>
+          <input id="loginPass" type="password" placeholder="Passwort" required />
+        </label>
+        <div id="loginMsg" class="muted" style="min-height:20px;margin-top:6px;"></div>
+        <div class="right" style="margin-top:8px;">
+          <button type="button" class="btn" id="loginCancel">Abbrechen</button>
+          <button type="submit" class="btn">Login</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Flash -->
+  <div id="flash"></div>
+
+  <script>
+  'use strict';
+
+  // ===== Einstellungen =====
+  const STAFF_PAGE   = 'mitarbeiterindex.html'; // <-- Falls deine Seite anders heißt, hier ändern
+  const TEST_EMAIL   = 'kaure.offizel@gmail.com';
+  const TEST_PASS    = 'kaure172';
+  const AUTH_KEY     = 'kaure_auth_v1';
+
+  // ===== Hilfen =====
+  const $ = (s)=>document.querySelector(s);
+  function showFlash(msg){
+    const f = $('#flash'); if(!f) return;
+    f.textContent = msg; f.classList.add('show');
+    setTimeout(()=>f.classList.remove('show'), 2200);
+  }
+
+  // ===== „Auth“-Mini (nur fürs Frontend-Testen) =====
+  function isAuthed(){
+    try{
+      const a = JSON.parse(localStorage.getItem(AUTH_KEY)||'null');
+      return !!(a && a.email);
+    }catch{ return false; }
+  }
+  function getUser(){
+    try{ return JSON.parse(localStorage.getItem(AUTH_KEY)||'null') }catch{ return null; }
+  }
+  function setAuth(email){
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ email, ts: Date.now() }));
+    window.dispatchEvent(new Event('auth-updated'));
+  }
+  function clearAuth(){
+    localStorage.removeItem(AUTH_KEY);
+    window.dispatchEvent(new Event('auth-updated'));
+  }
+
+  // ===== Login-UI =====
+  function openLogin(){
+    $('#loginModal').classList.add('show');
+    $('#loginEmail').value = getUser()?.email || '';
+    $('#loginPass').value = '';
+    $('#loginMsg').textContent = '';
+    $('#loginEmail').focus();
+  }
+  function closeLogin(){
+    $('#loginModal').classList.remove('show');
+  }
+  async function doLogin(e){
+    e.preventDefault();
+    const email = $('#loginEmail').value.trim();
+    const pass  = $('#loginPass').value;
+    if(!email || !pass){ $('#loginMsg').textContent = 'Bitte E-Mail & Passwort eingeben.'; return; }
+    // Test-Creds
+    if(email === TEST_EMAIL && pass === TEST_PASS){
+      setAuth(email);
+      closeLogin();
+      showFlash('Erfolgreich eingeloggt.');
+      updateNavForAuth();
+      return;
+    }
+    $('#loginMsg').textContent = 'Ungültige Login-Daten.';
+  }
+  function logout(){
+    clearAuth();
+    updateNavForAuth();
+    showFlash('Abgemeldet.');
+  }
+
+  // ===== Deine gewünschte Funktion: Buttons aufbauen =====
+  function updateNavForAuth(){
+    const container = document.getElementById('nav-cta');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (isAuthed()) {
+      // Mitarbeiter-Infos (führt auf externe Seite)
+      const staffBtn = document.createElement('button');
+      staffBtn.className = 'btn';
+      staffBtn.textContent = '📅 Mitarbeiter-Infos';
+      staffBtn.onclick = () => window.location.assign(STAFF_PAGE);
+
+      // Logout
+      const logoutBtn = document.createElement('button');
+      logoutBtn.className = 'btn';
+      logoutBtn.textContent = 'Logout';
+      logoutBtn.style.marginLeft = '8px';
+      logoutBtn.onclick = logout;
+
+      container.append(staffBtn, logoutBtn);
+    } else {
+      // Login
+      const loginBtn = document.createElement('button');
+      loginBtn.className  = 'btn';
+      loginBtn.textContent = 'Login Mitarbeiter';
+      loginBtn.onclick = openLogin;
+
+      // Optional: Mitarbeiter-Infos auch im ausgeloggten Zustand klickbar
+      const staffBtn = document.createElement('button');
+      staffBtn.className = 'btn';
+      staffBtn.textContent = '📅 Mitarbeiter-Infos';
+      staffBtn.style.marginLeft = '8px';
+      staffBtn.onclick = () => window.location.assign(STAFF_PAGE);
+
+      container.append(loginBtn, staffBtn);
+    }
+  }
+
+  // ===== Boot =====
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const y = $('#year'); if(y) y.textContent = new Date().getFullYear();
+    updateNavForAuth();
+
+    // Login-Modal Events
+    $('#loginForm').addEventListener('submit', doLogin);
+    $('#loginCancel').addEventListener('click', closeLogin);
+
+    // Optional: Hash #staff -> direkt Login oder Seite
+    if (location.hash === '#staff') {
+      if (isAuthed()) {
+        window.location.assign(STAFF_PAGE);
+      } else {
+        openLogin();
+      }
+    }
+  });
+  // Re-render bei Auth-Änderung (falls von anderswo ausgelöst)
+  window.addEventListener('auth-updated', updateNavForAuth);
+  </script>
+</body>
+</html>
