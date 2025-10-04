@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Mitarbeiter Infos – Stundenplan</title>
-  <meta name="description" content="Interner Wochen-Stundenplan – mit Blöcken und Protokoll (DEV/localStorage)." />
+  <meta name="description" content="Interner Wochen-Stundenplan – mit Blöcken und Protokoll (localStorage DEV)." />
   <style>
     :root { --bg:#0f1115; --card:#161a24; --line:#232737; --text:#e8e8ea; --muted:#a7aab3; }
     *{box-sizing:border-box}
@@ -18,11 +18,9 @@
     .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
     .tag{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:#b9bfd1}
     .btn{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:var(--text)}
-
     /* Topbar mit X */
     .topbar{display:flex;justify-content:space-between;align-items:center;background:#141821;color:#fff;padding:14px 18px;border-bottom:1px solid var(--line)}
     .topbar .close{background:none;border:0;font-size:22px;cursor:pointer;color:#a7aab3}
-
     /* Timetable */
     .tableWrap{overflow-x:auto}
     .tt{display:grid;grid-template-columns:80px repeat(7,1fr);gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -36,11 +34,10 @@
     .slot .title{font-weight:600;font-size:14px}
     .slot .who{font-size:12px;color:var(--muted)}
     .slot .actions{margin-top:6px;display:flex;gap:6px}
-
     /* Dialog */
     dialog{border:none;border-radius:14px;padding:0}
     .modal{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:14px;width:min(520px,96vw);position:relative}
-    .closeBtn{position:absolute;top:8px;right:8px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer}
+    .closeBtn{position:absolute;top:8px;right:8px;background:none;border:none;font-size:20px;color:#a7aab3;cursor:pointer}
     .sep{height:1px;background:var(--line);margin:12px 0}
     .actionsBar{display:flex;gap:8px;justify-content:flex-end}
     .danger{background:#3a1b1b;border:1px solid #5a2a2a;color:#ffbdbd}
@@ -88,8 +85,12 @@
       <button type="button" class="closeBtn" id="closeDialog" aria-label="Dialog schließen">✖</button>
       <h3 id="dlgTitle">Block hinzufügen</h3>
       <div class="row">
-        <label style="flex:1"><div class="muted">Titel</div><input id="f_title" required placeholder="z.B. Kunde Müller – Website" /></label>
-        <label><div class="muted">Tag</div>
+        <label style="flex:1">
+          <div class="muted">Titel</div>
+          <input id="f_title" required placeholder="z.B. Kunde Müller – Website" />
+        </label>
+        <label>
+          <div class="muted">Tag</div>
           <select id="f_day">
             <option value="0">Mo</option><option value="1">Di</option><option value="2">Mi</option>
             <option value="3">Do</option><option value="4">Fr</option><option value="5">Sa</option><option value="6">So</option>
@@ -114,10 +115,11 @@
 'use strict';
 
 /* ===== Einstellungen ===== */
-// Wenn deine Startseite anders heißt, hier anpassen:
-const HOME_FALLBACK = 'index.html';
+const HOME_FALLBACK = 'index.html';         // <- anpassen, falls deine Startseite anders heißt
+const DEV_EMAIL = 'kaure.offizel@gmail.com';
+const DEV_UID = 'dev-kaure-uid';
 
-/* ===== ZURÜCK-Button (X) – robust mit Fallback ===== */
+/* ===== Zurück (✖) – robust ===== */
 (function(){
   const base = location.href.endsWith('/') ? location.href : location.href.replace(/[^/]+$/, '');
   const home = new URL('./' + HOME_FALLBACK, base).toString();
@@ -125,44 +127,18 @@ const HOME_FALLBACK = 'index.html';
     e.preventDefault();
     if (history.length > 1) {
       history.back();
-      setTimeout(()=>{ if (document.visibilityState==='visible') window.location.assign(home); }, 400);
+      setTimeout(()=>{ if (document.visibilityState==='visible') window.location.assign(home); }, 350);
     } else {
       window.location.assign(home);
     }
   };
 })();
 
-/* ===== DEV MODE (localStorage) ===== */
-const DEV_EMAIL = 'kaure.offizel@gmail.com';
-const DEV_UID = 'dev-kaure-uid';
-
-/* ===== State & Konstanten ===== */
+/* ===== Helpers ===== */
 const $ = s => document.querySelector(s);
 const days = ["Mo","Di","Mi","Do","Fr","Sa","So"];
 const START_HOUR = 7, END_HOUR = 20, HOUR_PX = 52, PX_PER_MIN = HOUR_PX/60;
-let currentWeekStart = mondayOf(new Date());
-let unsub=null, unsubAudit=null;
-const blockCache = new Map();
-
-/* ===== DEV Backend (localStorage) ===== */
-const DEV_KEYS = { blocks:'dev_scheduleBlocks_v1', audit:'dev_scheduleAudit_v1' };
-const devListeners = { blocks:[], audit:[] };
-const devLoad = k => { try{ return JSON.parse(localStorage.getItem(k)||'[]'); }catch{ return []; } };
-const devSave = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
-const devNotify = c => devListeners[c].forEach(cb=>cb(devLoad(DEV_KEYS[c])));
-const genId = ()=> 'id_'+Math.random().toString(36).slice(2,9);
-const DEV_API = {
-  onBlocks(weekStart, cb){ const w=(all)=>cb(all.filter(b=>b.weekStart===weekStart)); devListeners.blocks.push(w); w(devLoad(DEV_KEYS.blocks)); return ()=>{devListeners.blocks=devListeners.blocks.filter(x=>x!==w);} },
-  addBlock(o){ const all=devLoad(DEV_KEYS.blocks); const id=genId(); all.push(Object.assign({id},o)); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); return Promise.resolve({id}); },
-  updateBlock(id,o){ const all=devLoad(DEV_KEYS.blocks); const i=all.findIndex(x=>x.id===id); if(i>=0){ all[i]=Object.assign(all[i],o); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); } return Promise.resolve(); },
-  deleteBlock(id){ let all=devLoad(DEV_KEYS.blocks); all=all.filter(x=>x.id!==id); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); return Promise.resolve(); },
-  onAudit(weekStart,cb){ const w=(all)=>cb(all.filter(a=>a.weekStart===weekStart).sort((u,v)=>v.when-u.when)); devListeners.audit.push(w); w(devLoad(DEV_KEYS.audit)); return ()=>{devListeners.audit=devListeners.audit.filter(x=>x!==w);} },
-  addAudit(o){ const all=devLoad(DEV_KEYS.audit); all.push(Object.assign({id:genId(),when:Date.now()},o)); devSave(DEV_KEYS.audit,all); devNotify('audit'); return Promise.resolve(); }
-};
-const API = DEV_API;
-
-/* ===== Helpers ===== */
-function mondayOf(d){ const x=new Date(d); const w=(x.getDay()+6)%7; x.setDate(x.getDate()-w); x.setHours(0,0,0,0); return x; }
+const mondayOf = (d)=>{ const x=new Date(d); const w=(x.getDay()+6)%7; x.setDate(x.getDate()-w); x.setHours(0,0,0,0); return x; };
 const plusDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
 const toISODate = d => d.toISOString().slice(0,10);
 const minutes = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
@@ -171,27 +147,73 @@ const fmtHM = m => { const h=Math.floor(m/60), mm=m%60; return `${String(h).padS
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 
+/* ===== DEV Storage (localStorage) ===== */
+const DEV_KEYS = { blocks:'dev_scheduleBlocks_v1', audit:'dev_scheduleAudit_v1' };
+const devListeners = { blocks:[], audit:[] };
+const devLoad = k => { try{ return JSON.parse(localStorage.getItem(k)||'[]'); }catch{ return []; } };
+const devSave = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+const devNotify = c => devListeners[c].forEach(cb=>cb(devLoad(DEV_KEYS[c])));
+const genId = ()=> 'id_'+Math.random().toString(36).slice(2,9);
+
+const DEV_API = {
+  onBlocks(weekStart, cb){
+    const w=(all)=>cb(all.filter(b=>b.weekStart===weekStart));
+    devListeners.blocks.push(w);
+    w(devLoad(DEV_KEYS.blocks));
+    return ()=>{ devListeners.blocks=devListeners.blocks.filter(x=>x!==w); };
+  },
+  addBlock(o){
+    const all=devLoad(DEV_KEYS.blocks); const id=genId();
+    all.push(Object.assign({id},o)); devSave(DEV_KEYS.blocks,all); devNotify('blocks');
+    return Promise.resolve({id});
+  },
+  updateBlock(id,o){
+    const all=devLoad(DEV_KEYS.blocks); const i=all.findIndex(x=>x.id===id);
+    if(i>=0){ all[i]=Object.assign(all[i],o); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); }
+    return Promise.resolve();
+  },
+  deleteBlock(id){
+    let all=devLoad(DEV_KEYS.blocks); all=all.filter(x=>x.id!==id);
+    devSave(DEV_KEYS.blocks,all); devNotify('blocks'); return Promise.resolve();
+  },
+  onAudit(weekStart,cb){
+    const w=(all)=>cb(all.filter(a=>a.weekStart===weekStart).sort((u,v)=>v.when-u.when));
+    devListeners.audit.push(w); w(devLoad(DEV_KEYS.audit));
+    return ()=>{ devListeners.audit=devListeners.audit.filter(x=>x!==w); };
+  },
+  addAudit(o){
+    const all=devLoad(DEV_KEYS.audit);
+    all.push(Object.assign({id:genId(),when:Date.now()},o));
+    devSave(DEV_KEYS.audit,all); devNotify('audit'); return Promise.resolve();
+  }
+};
+
+/* ===== View State ===== */
+let currentWeekStart = mondayOf(new Date());
+let unsub=null, unsubAudit=null;           // cleanup handles
+const blockCache = new Map();              // id -> block
+
 /* ===== UI Events ===== */
 $("#addBlockBtn").onclick = openAddDialog;
 $("#prevWeek").onclick = ()=>{ currentWeekStart.setDate(currentWeekStart.getDate()-7); renderWeek(); subscribeAudit(); };
 $("#nextWeek").onclick = ()=>{ currentWeekStart.setDate(currentWeekStart.getDate()+7); renderWeek(); subscribeAudit(); };
 
-/* Delegation: Edit */
+/* Delegated edit click */
 document.addEventListener('click', (e)=>{
   const editBtn = e.target.closest('.editBtn');
   if(editBtn){
-    const id=editBtn.dataset.id;
-    const b=blockCache.get(id);
+    const id=editBtn.dataset.id, b=blockCache.get(id);
     if(!b){ alert('Block nicht gefunden.'); return; }
     openEditDialog(id,b);
   }
 });
 
-/* ===== Render Week ===== */
+/* ===== Rendering ===== */
 function renderWeek(){
   $("#weekLabel").textContent = `${fmtDate(currentWeekStart)} – ${fmtDate(plusDays(currentWeekStart,6))}`;
   const tt = $("#timetable"); tt.innerHTML=''; const hoursCount=END_HOUR-START_HOUR;
 
+  // Kopfzeile
   const headTime=document.createElement('div'); headTime.className='tt-head'; headTime.textContent=' '; tt.appendChild(headTime);
   for(let d=0; d<7; d++){
     const date=plusDays(currentWeekStart,d);
@@ -199,29 +221,44 @@ function renderWeek(){
     h.textContent=`${days[d]} ${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.`;
     tt.appendChild(h);
   }
+  // Zeitspalte
   const timeCol=document.createElement('div'); timeCol.className='tt-timecol';
-  for(let r=0;r<hoursCount;r++){ const lab=document.createElement('div'); lab.className='timeLabel'; lab.textContent=`${String(START_HOUR+r).padStart(2,'0')}:00`; timeCol.appendChild(lab); }
+  for(let r=0;r<hoursCount;r++){
+    const lab=document.createElement('div'); lab.className='timeLabel';
+    lab.textContent=`${String(START_HOUR+r).padStart(2,'0')}:00`; timeCol.appendChild(lab);
+  }
   tt.appendChild(timeCol);
 
-  for(let c=0;c<7;c++){ const dc=document.createElement('div'); dc.className='daycol'; const grid=document.createElement('div'); grid.className='daygrid'; grid.style.setProperty('--hours',hoursCount); dc.appendChild(grid); tt.appendChild(dc); }
+  // 7 Tages-Spalten
+  for(let c=0;c<7;c++){
+    const dc=document.createElement('div'); dc.className='daycol';
+    const grid=document.createElement('div'); grid.className='daygrid';
+    grid.style.setProperty('--hours',hoursCount);
+    dc.appendChild(grid); tt.appendChild(dc);
+  }
 
+  // Realtime (DEV)
   if (unsub){ try{unsub();}catch{}; unsub=null; }
   const weekStartISO = toISODate(currentWeekStart);
-  unsub = API.onBlocks(weekStartISO, (arr)=>{
+  unsub = DEV_API.onBlocks(weekStartISO, (arr)=>{
     document.querySelectorAll('.slot').forEach(e=>e.remove());
     blockCache.clear();
     arr.forEach(doc=>placeBlock(doc.id, doc));
   });
 }
-const dayColEl = i => $("#timetable").children[9+i];
+const dayColEl = i => $("#timetable").children[9+i]; // 1 headTime + 7 headDays + 1 timeCol = 9
+
 function placeBlock(id,b){
   const block=Object.assign({},b);
   if(!block.startMinutes && block.start) block.startMinutes=minutes(block.start);
   if(!block.endMinutes && block.end) block.endMinutes=minutes(block.end);
-  const col=dayColEl(block.dayIndex); if(!col) return; const grid=col.querySelector('.daygrid');
+  const col=dayColEl(block.dayIndex); if(!col) return;
+  const grid=col.querySelector('.daygrid');
   const topPx=clamp((block.startMinutes-START_HOUR*60)*PX_PER_MIN,0,99999);
   const heightPx=Math.max(28,(block.endMinutes-block.startMinutes)*PX_PER_MIN);
-  const el=document.createElement('div'); el.className='slot'; el.style.top=`${topPx}px`; el.style.height=`${heightPx}px`;
+
+  const el=document.createElement('div'); el.className='slot';
+  el.style.top=`${topPx}px`; el.style.height=`${heightPx}px`;
   el.innerHTML = `
     <div class="title">${escapeHtml(block.title||'Block')}</div>
     <div class="who">${escapeHtml(block.assigneeName||'')} • ${fmtHM(block.startMinutes)}–${fmtHM(block.endMinutes)}</div>
@@ -262,15 +299,25 @@ cancelBtn.onclick = closeBtn.onclick = closeDialog;
 delBtn.onclick = async ()=>{
   if(!editId) return;
   if(!confirm('Diesen Block löschen?')) return;
-  try{ await deleteWithAudit(editId); }catch(e){ alert(e.message); }
+  try{
+    const all = devLoad(DEV_KEYS.blocks); const data = all.find(x=>x.id===editId)||{};
+    await DEV_API.addAudit({ action:'delete', blockId:editId, title:data.title||'Block', weekStart:data.weekStart||toISODate(currentWeekStart), whoUid:DEV_UID, whoName:DEV_EMAIL, when:Date.now() });
+    await DEV_API.deleteBlock(editId);
+    renderWeek();
+  }catch(e){ alert(e.message); }
   closeDialog();
 };
+
 saveBtn.onclick = async ()=>{
   const title=$("#f_title").value.trim(); const dayIndex=parseInt($("#f_day").value,10);
   const start=$("#f_start").value, end=$("#f_end").value; const startM=minutes(start), endM=minutes(end);
   if(!title || endM<=startM){ alert('Bitte Titel eingeben und Zeiten prüfen.'); return; }
-  const weekStartISO=toISODate(currentWeekStart); const assigneeName=($("#f_assigneeName").value.trim())||DEV_EMAIL;
-  const payload={ title, dayIndex, startMinutes:startM, endMinutes:endM, weekStart:weekStartISO, assigneeUid:DEV_UID, assigneeName, color:null, ts:Date.now() };
+  const weekStartISO=toISODate(currentWeekStart);
+  const assigneeName=($("#f_assigneeName").value.trim())||DEV_EMAIL;
+
+  const payload={ title, dayIndex, startMinutes:startM, endMinutes:endM, weekStart:weekStartISO,
+                  assigneeUid:DEV_UID, assigneeName, color:null, ts:Date.now() };
+
   try{
     if(editId){
       await DEV_API.updateBlock(editId,payload);
@@ -283,18 +330,11 @@ saveBtn.onclick = async ()=>{
   }catch(err){ alert(err.message); }
 };
 
-async function deleteWithAudit(id){
-  const all = devLoad(DEV_KEYS.blocks); const data = all.find(x=>x.id===id)||{};
-  await DEV_API.addAudit({ action:'delete', blockId:id, title:data.title||'Block', weekStart:data.weekStart||toISODate(currentWeekStart), whoUid:DEV_UID, whoName:DEV_EMAIL, when:Date.now() });
-  await DEV_API.deleteBlock(id);
-  renderWeek();
-}
-
 /* ===== Audit ===== */
 function subscribeAudit(){
   const list=$("#auditList"); const weekStartISO=toISODate(currentWeekStart);
   if (unsubAudit){ try{unsubAudit();}catch{}; unsubAudit=null; }
-  unsubAudit = API.onAudit(weekStartISO, (arr)=>{
+  unsubAudit = DEV_API.onAudit(weekStartISO, (arr)=>{
     if(!arr.length){ list.textContent='Noch keine Einträge.'; return; }
     list.innerHTML='';
     arr.forEach(a=>{
