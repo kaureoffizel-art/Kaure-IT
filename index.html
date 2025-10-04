@@ -132,7 +132,15 @@
       if(!container) return;
       container.innerHTML='';
       if(isAuthed()){
-        const staffBtn=document.createElement('button'); staffBtn.className='btn'; staffBtn.textContent='Mitarbeiter-Infos'; staffBtn.onclick=showStaff;
+       const staffBtn = document.createElement('a');
+staffBtn.className = 'btn';
+staffBtn.textContent = '📅 Mitarbeiter-Infos';
+staffBtn.href = 'mitarbeiter-infos.html';
+staffBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.assign(staffBtn.href);
+});
+
         const logoutBtn=document.createElement('button'); logoutBtn.className='btn'; logoutBtn.textContent='Logout'; logoutBtn.style.marginLeft='8px'; logoutBtn.onclick=logout;
         container.appendChild(staffBtn); container.appendChild(logoutBtn);
       } else {
