@@ -134,14 +134,71 @@
   container.innerHTML = '';
 
   if (isAuthed()) {
-  const staffBtn = document.createElement('button');
-staffBtn.className = 'btn';
-staffBtn.textContent = '📅 Mitarbeiter-Infos';
+ 
+function updateNavForAuth(){
+  const container = document.getElementById('nav-cta');
+  if (!container) return;
 
-const staffUrl = new URL('./mitarbeiterindex.html', location.href).toString();
-staffBtn.onclick = () => window.location.assign(staffUrl);
+  // nie „leer hängen“ lassen
+  container.textContent = '';
 
-    });
+  // defensiv prüfen – wenn nicht definiert, einfach „false“
+  const authed = (typeof isAuthed === 'function') ? !!isAuthed() : false;
+
+  // Helper: Button mit deinem Button-Style
+  const makeBtn = (label) => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = label;
+    return b;
+  };
+
+  try {
+    if (authed) {
+      // Mitarbeiter-Infos
+      const staffBtn = makeBtn('📅 Mitarbeiter-Infos');
+      const staffUrl = new URL('./mitarbeiterindex.html', location.href).toString(); // <- ggf. Dateinamen anpassen!
+      staffBtn.onclick = () => window.location.assign(staffUrl);
+
+      // Logout (falls Funktion fehlt, nicht crashen)
+      const logoutBtn = makeBtn('Logout');
+      logoutBtn.style.marginLeft = '8px';
+      logoutBtn.onclick = (typeof logout === 'function')
+        ? logout
+        : () => console.warn('logout() ist nicht definiert');
+
+      container.append(staffBtn, logoutBtn);
+    } else {
+      // Login (falls Funktion fehlt, nicht crashen)
+      const loginBtn = makeBtn('Login Mitarbeiter');
+      loginBtn.onclick = (typeof openLogin === 'function')
+        ? openLogin
+        : () => console.warn('openLogin() ist nicht definiert');
+
+      // Optional: Mitarbeiter-Infos-Link trotzdem anzeigen
+      const staffBtn = makeBtn('📅 Mitarbeiter-Infos');
+      staffBtn.style.marginLeft = '8px';
+      const staffUrl = new URL('./mitarbeiterindex.html', location.href).toString(); // <- ggf. anpassen
+      staffBtn.onclick = () => window.location.assign(staffUrl);
+
+      container.append(loginBtn, staffBtn);
+    }
+  } catch (err) {
+    console.error('[updateNavForAuth] Fehler:', err);
+
+    // Fallback-Button, damit nie „leer“
+    const fallback = makeBtn('Zur Startseite');
+    const homeUrl = new URL('./index.html', location.href).toString();
+    fallback.onclick = () => window.location.assign(homeUrl);
+    container.appendChild(fallback);
+  }
+}
+
+// Sicherstellen, dass es läuft
+document.addEventListener('DOMContentLoaded', updateNavForAuth);
+// und nach Login/Logout:
+window.addEventListener('auth-updated', updateNavForAuth); // optional, falls du Events feuerst
+
 
     // Logout bleibt wie gehabt
     const logoutBtn = document.createElement('button');
