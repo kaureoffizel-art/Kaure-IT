@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mitarbeiter Infos – Kaure IT</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Seitenleiste mit X */
+    .topbar {
+      display:flex;justify-content:space-between;align-items:center;
+      background:#141821;color:#fff;padding:14px 18px;border-bottom:1px solid #232737;
+    }
+    .topbar .close {
+      background:none;border:0;font-size:22px;cursor:pointer;color:#a7aab3;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>📅 Mitarbeiter Infos</strong>
+    <!-- zurück zur Hauptseite -->
+    <button class="close" onclick="window.location.href='index.html'">✖</button>
+  </div>
+
+  <main class="wrap">
+    <div class="toolbar">
+      <div class="row">
+        <button id="prevWeek" type="button">◀ Woche zurück</button>
+        <div id="weekLabel" class="muted"></div>
+        <button id="nextWeek" type="button">Woche vor ▶</button>
+      </div>
+      <div class="row">
+        <span id="roleTag" class="tag">Rolle: mitarbeiter (dev)</span>
+        <button id="addBlockBtn" type="button">+ Block hinzufügen</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="tableWrap"><div id="timetable" class="tt"></div></div>
+      <div class="muted" style="margin-top:10px;">Alle Eingeloggten können Blöcke sehen & hinzufügen. Änderungen stehen im Protokoll.</div>
+    </div>
+
+    <div class="card">
+      <strong>📝 Protokoll (diese Woche)</strong>
+      <div id="auditList" class="muted" style="margin-top:6px;">Lade…</div>
+    </div>
+
+    <div id="selftest" class="selftest muted"></div>
+  </main>
+
+  <!-- Dialog -->
+  <dialog id="blockDialog">
+    <form method="dialog" class="modal">
+      <button type="button" class="closeBtn" id="closeDialog" aria-label="Dialog schließen">✖</button>
+      <h3 id="dlgTitle">Block hinzufügen</h3>
+      <div class="row">
+        <label style="flex:1"><div class="muted">Titel</div><input id="f_title" required placeholder="z.B. Kunde Müller – Website" /></label>
+        <label><div class="muted">Tag</div>
+          <select id="f_day">
+            <option value="0">Mo</option><option value="1">Di</option><option value="2">Mi</option>
+            <option value="3">Do</option><option value="4">Fr</option><option value="5">Sa</option><option value="6">So</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label><div class="muted">Start</div><input id="f_start" type="time" value="08:00" required /></label>
+        <label><div class="muted">Ende</div><input id="f_end" type="time" value="10:00" required /></label>
+        <label style="flex:1"><div class="muted">Zuständig (Name/E-Mail)</div><input id="f_assigneeName" placeholder="z.B. Kenan" /></label>
+      </div>
+      <div class="sep"></div>
+      <div class="actionsBar">
+        <button id="deleteBlock" type="button" class="danger" style="margin-right:auto;display:none">Löschen</button>
+        <button type="button" id="cancelDialog">Abbrechen</button>
+        <button id="saveBlock" type="button">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
