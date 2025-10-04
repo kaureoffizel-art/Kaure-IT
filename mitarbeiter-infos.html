@@ -2,25 +2,58 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mitarbeiter Infos – Kaure IT</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mitarbeiter Infos – Stundenplan</title>
+  <meta name="description" content="Interner Wochen-Stundenplan – mit Blöcken und Protokoll (DEV/localStorage)." />
   <style>
-    /* Seitenleiste mit X */
-    .topbar {
-      display:flex;justify-content:space-between;align-items:center;
-      background:#141821;color:#fff;padding:14px 18px;border-bottom:1px solid #232737;
-    }
-    .topbar .close {
-      background:none;border:0;font-size:22px;cursor:pointer;color:#a7aab3;
-    }
+    :root { --bg:#0f1115; --card:#161a24; --line:#232737; --text:#e8e8ea; --muted:#a7aab3; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1100px;margin:0 auto;padding:18px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+    .muted{color:var(--muted);font-size:14px}
+    button,select,input{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+    button{cursor:pointer}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .tag{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:#b9bfd1}
+    .btn{padding:10px 12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:var(--text)}
+
+    /* Topbar mit X */
+    .topbar{display:flex;justify-content:space-between;align-items:center;background:#141821;color:#fff;padding:14px 18px;border-bottom:1px solid var(--line)}
+    .topbar .close{background:none;border:0;font-size:22px;cursor:pointer;color:#a7aab3}
+
+    /* Timetable */
+    .tableWrap{overflow-x:auto}
+    .tt{display:grid;grid-template-columns:80px repeat(7,1fr);gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .tt-head{background:#141821;font-weight:600;padding:10px;border-right:1px solid var(--line)}
+    .tt-timecol{background:#141821;color:var(--muted);border-right:1px solid var(--line)}
+    .timeLabel{height:52px;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 8px;font-size:12px;border-bottom:1px solid var(--line)}
+    .daycol{position:relative;min-height:52px;border-right:1px solid var(--line)}
+    .daycol:last-child{border-right:none}
+    .daygrid{position:relative;height:calc(var(--hours)*52px);background:repeating-linear-gradient(to bottom,rgba(255,255,255,.04),rgba(255,255,255,.04) 1px,transparent 1px,transparent 52px)}
+    .slot{position:absolute;left:6px;right:6px;border-radius:10px;padding:6px 8px;border:1px dashed var(--line);background:rgba(255,255,255,.06);z-index:1}
+    .slot .title{font-weight:600;font-size:14px}
+    .slot .who{font-size:12px;color:var(--muted)}
+    .slot .actions{margin-top:6px;display:flex;gap:6px}
+
+    /* Dialog */
+    dialog{border:none;border-radius:14px;padding:0}
+    .modal{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:14px;width:min(520px,96vw);position:relative}
+    .closeBtn{position:absolute;top:8px;right:8px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer}
+    .sep{height:1px;background:var(--line);margin:12px 0}
+    .actionsBar{display:flex;gap:8px;justify-content:flex-end}
+    .danger{background:#3a1b1b;border:1px solid #5a2a2a;color:#ffbdbd}
+    .selftest{margin-top:10px;font-size:12px}
+    .auditItem{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:6px 0}
+    .auditItem:first-child{border-top:none}
   </style>
 </head>
 <body>
+  <!-- Kopf mit Zurück-X -->
   <div class="topbar">
     <strong>📅 Mitarbeiter Infos</strong>
-    <!-- zurück zur Hauptseite -->
-    <button class="close" onclick="window.location.href='index.html'">✖</button>
+    <button class="close" type="button" id="backBtn" title="Zurück">✖</button>
   </div>
 
   <main class="wrap">
@@ -43,13 +76,13 @@
 
     <div class="card">
       <strong>📝 Protokoll (diese Woche)</strong>
-      <div id="auditList" class="muted" style="margin-top:6px;">Lade…</div>
+      <div id="auditList" class="muted" style="margin-top:6px;">Noch keine Einträge.</div>
     </div>
 
     <div id="selftest" class="selftest muted"></div>
   </main>
 
-  <!-- Dialog -->
+  <!-- Dialog: Add/Edit -->
   <dialog id="blockDialog">
     <form method="dialog" class="modal">
       <button type="button" class="closeBtn" id="closeDialog" aria-label="Dialog schließen">✖</button>
@@ -77,6 +110,211 @@
     </form>
   </dialog>
 
-  <script src="app.js" defer></script>
+<script>
+'use strict';
+
+/* ===== Einstellungen ===== */
+// Wenn deine Startseite anders heißt, hier anpassen:
+const HOME_FALLBACK = 'index.html';
+
+/* ===== ZURÜCK-Button (X) – robust mit Fallback ===== */
+(function(){
+  const base = location.href.endsWith('/') ? location.href : location.href.replace(/[^/]+$/, '');
+  const home = new URL('./' + HOME_FALLBACK, base).toString();
+  document.getElementById('backBtn').onclick = (e)=>{
+    e.preventDefault();
+    if (history.length > 1) {
+      history.back();
+      setTimeout(()=>{ if (document.visibilityState==='visible') window.location.assign(home); }, 400);
+    } else {
+      window.location.assign(home);
+    }
+  };
+})();
+
+/* ===== DEV MODE (localStorage) ===== */
+const DEV_EMAIL = 'kaure.offizel@gmail.com';
+const DEV_UID = 'dev-kaure-uid';
+
+/* ===== State & Konstanten ===== */
+const $ = s => document.querySelector(s);
+const days = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+const START_HOUR = 7, END_HOUR = 20, HOUR_PX = 52, PX_PER_MIN = HOUR_PX/60;
+let currentWeekStart = mondayOf(new Date());
+let unsub=null, unsubAudit=null;
+const blockCache = new Map();
+
+/* ===== DEV Backend (localStorage) ===== */
+const DEV_KEYS = { blocks:'dev_scheduleBlocks_v1', audit:'dev_scheduleAudit_v1' };
+const devListeners = { blocks:[], audit:[] };
+const devLoad = k => { try{ return JSON.parse(localStorage.getItem(k)||'[]'); }catch{ return []; } };
+const devSave = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+const devNotify = c => devListeners[c].forEach(cb=>cb(devLoad(DEV_KEYS[c])));
+const genId = ()=> 'id_'+Math.random().toString(36).slice(2,9);
+const DEV_API = {
+  onBlocks(weekStart, cb){ const w=(all)=>cb(all.filter(b=>b.weekStart===weekStart)); devListeners.blocks.push(w); w(devLoad(DEV_KEYS.blocks)); return ()=>{devListeners.blocks=devListeners.blocks.filter(x=>x!==w);} },
+  addBlock(o){ const all=devLoad(DEV_KEYS.blocks); const id=genId(); all.push(Object.assign({id},o)); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); return Promise.resolve({id}); },
+  updateBlock(id,o){ const all=devLoad(DEV_KEYS.blocks); const i=all.findIndex(x=>x.id===id); if(i>=0){ all[i]=Object.assign(all[i],o); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); } return Promise.resolve(); },
+  deleteBlock(id){ let all=devLoad(DEV_KEYS.blocks); all=all.filter(x=>x.id!==id); devSave(DEV_KEYS.blocks,all); devNotify('blocks'); return Promise.resolve(); },
+  onAudit(weekStart,cb){ const w=(all)=>cb(all.filter(a=>a.weekStart===weekStart).sort((u,v)=>v.when-u.when)); devListeners.audit.push(w); w(devLoad(DEV_KEYS.audit)); return ()=>{devListeners.audit=devListeners.audit.filter(x=>x!==w);} },
+  addAudit(o){ const all=devLoad(DEV_KEYS.audit); all.push(Object.assign({id:genId(),when:Date.now()},o)); devSave(DEV_KEYS.audit,all); devNotify('audit'); return Promise.resolve(); }
+};
+const API = DEV_API;
+
+/* ===== Helpers ===== */
+function mondayOf(d){ const x=new Date(d); const w=(x.getDay()+6)%7; x.setDate(x.getDate()-w); x.setHours(0,0,0,0); return x; }
+const plusDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const toISODate = d => d.toISOString().slice(0,10);
+const minutes = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
+const fmtDate = d => d.toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'numeric'});
+const fmtHM = m => { const h=Math.floor(m/60), mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; };
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+/* ===== UI Events ===== */
+$("#addBlockBtn").onclick = openAddDialog;
+$("#prevWeek").onclick = ()=>{ currentWeekStart.setDate(currentWeekStart.getDate()-7); renderWeek(); subscribeAudit(); };
+$("#nextWeek").onclick = ()=>{ currentWeekStart.setDate(currentWeekStart.getDate()+7); renderWeek(); subscribeAudit(); };
+
+/* Delegation: Edit */
+document.addEventListener('click', (e)=>{
+  const editBtn = e.target.closest('.editBtn');
+  if(editBtn){
+    const id=editBtn.dataset.id;
+    const b=blockCache.get(id);
+    if(!b){ alert('Block nicht gefunden.'); return; }
+    openEditDialog(id,b);
+  }
+});
+
+/* ===== Render Week ===== */
+function renderWeek(){
+  $("#weekLabel").textContent = `${fmtDate(currentWeekStart)} – ${fmtDate(plusDays(currentWeekStart,6))}`;
+  const tt = $("#timetable"); tt.innerHTML=''; const hoursCount=END_HOUR-START_HOUR;
+
+  const headTime=document.createElement('div'); headTime.className='tt-head'; headTime.textContent=' '; tt.appendChild(headTime);
+  for(let d=0; d<7; d++){
+    const date=plusDays(currentWeekStart,d);
+    const h=document.createElement('div'); h.className='tt-head';
+    h.textContent=`${days[d]} ${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.`;
+    tt.appendChild(h);
+  }
+  const timeCol=document.createElement('div'); timeCol.className='tt-timecol';
+  for(let r=0;r<hoursCount;r++){ const lab=document.createElement('div'); lab.className='timeLabel'; lab.textContent=`${String(START_HOUR+r).padStart(2,'0')}:00`; timeCol.appendChild(lab); }
+  tt.appendChild(timeCol);
+
+  for(let c=0;c<7;c++){ const dc=document.createElement('div'); dc.className='daycol'; const grid=document.createElement('div'); grid.className='daygrid'; grid.style.setProperty('--hours',hoursCount); dc.appendChild(grid); tt.appendChild(dc); }
+
+  if (unsub){ try{unsub();}catch{}; unsub=null; }
+  const weekStartISO = toISODate(currentWeekStart);
+  unsub = API.onBlocks(weekStartISO, (arr)=>{
+    document.querySelectorAll('.slot').forEach(e=>e.remove());
+    blockCache.clear();
+    arr.forEach(doc=>placeBlock(doc.id, doc));
+  });
+}
+const dayColEl = i => $("#timetable").children[9+i];
+function placeBlock(id,b){
+  const block=Object.assign({},b);
+  if(!block.startMinutes && block.start) block.startMinutes=minutes(block.start);
+  if(!block.endMinutes && block.end) block.endMinutes=minutes(block.end);
+  const col=dayColEl(block.dayIndex); if(!col) return; const grid=col.querySelector('.daygrid');
+  const topPx=clamp((block.startMinutes-START_HOUR*60)*PX_PER_MIN,0,99999);
+  const heightPx=Math.max(28,(block.endMinutes-block.startMinutes)*PX_PER_MIN);
+  const el=document.createElement('div'); el.className='slot'; el.style.top=`${topPx}px`; el.style.height=`${heightPx}px`;
+  el.innerHTML = `
+    <div class="title">${escapeHtml(block.title||'Block')}</div>
+    <div class="who">${escapeHtml(block.assigneeName||'')} • ${fmtHM(block.startMinutes)}–${fmtHM(block.endMinutes)}</div>
+    <div class="actions"><button type="button" data-id="${id}" class="editBtn">Bearbeiten</button></div>`;
+  grid.appendChild(el);
+  blockCache.set(id, block);
+}
+
+/* ===== Dialog Add/Edit ===== */
+const dlg=$("#blockDialog"), delBtn=$("#deleteBlock"), saveBtn=$("#saveBlock"), cancelBtn=$("#cancelDialog"), closeBtn=$("#closeDialog");
+let editId=null;
+
+function openAddDialog(){
+  editId=null;
+  $("#dlgTitle").textContent='Block hinzufügen';
+  $("#f_title").value='';
+  $("#f_day").value=String((new Date().getDay()+6)%7);
+  $("#f_start").value='08:00';
+  $("#f_end").value='10:00';
+  $("#f_assigneeName").value=DEV_EMAIL;
+  delBtn.style.display='none';
+  dlg.showModal();
+}
+function openEditDialog(id,b){
+  editId=id;
+  $("#dlgTitle").textContent='Block bearbeiten';
+  $("#f_title").value=b.title||'';
+  $("#f_day").value=String(b.dayIndex||0);
+  $("#f_start").value=fmtHM(b.startMinutes);
+  $("#f_end").value=fmtHM(b.endMinutes);
+  $("#f_assigneeName").value=b.assigneeName||'';
+  delBtn.style.display='inline-flex';
+  dlg.showModal();
+}
+function closeDialog(){ dlg.close(); }
+cancelBtn.onclick = closeBtn.onclick = closeDialog;
+
+delBtn.onclick = async ()=>{
+  if(!editId) return;
+  if(!confirm('Diesen Block löschen?')) return;
+  try{ await deleteWithAudit(editId); }catch(e){ alert(e.message); }
+  closeDialog();
+};
+saveBtn.onclick = async ()=>{
+  const title=$("#f_title").value.trim(); const dayIndex=parseInt($("#f_day").value,10);
+  const start=$("#f_start").value, end=$("#f_end").value; const startM=minutes(start), endM=minutes(end);
+  if(!title || endM<=startM){ alert('Bitte Titel eingeben und Zeiten prüfen.'); return; }
+  const weekStartISO=toISODate(currentWeekStart); const assigneeName=($("#f_assigneeName").value.trim())||DEV_EMAIL;
+  const payload={ title, dayIndex, startMinutes:startM, endMinutes:endM, weekStart:weekStartISO, assigneeUid:DEV_UID, assigneeName, color:null, ts:Date.now() };
+  try{
+    if(editId){
+      await DEV_API.updateBlock(editId,payload);
+      await DEV_API.addAudit({action:'update',blockId:editId,title,weekStart:weekStartISO,whoUid:DEV_UID,whoName:assigneeName,when:Date.now()});
+    } else {
+      const r=await DEV_API.addBlock(payload);
+      await DEV_API.addAudit({action:'create',blockId:r.id,title,weekStart:weekStartISO,whoUid:DEV_UID,whoName:assigneeName,when:Date.now()});
+    }
+    closeDialog();
+  }catch(err){ alert(err.message); }
+};
+
+async function deleteWithAudit(id){
+  const all = devLoad(DEV_KEYS.blocks); const data = all.find(x=>x.id===id)||{};
+  await DEV_API.addAudit({ action:'delete', blockId:id, title:data.title||'Block', weekStart:data.weekStart||toISODate(currentWeekStart), whoUid:DEV_UID, whoName:DEV_EMAIL, when:Date.now() });
+  await DEV_API.deleteBlock(id);
+  renderWeek();
+}
+
+/* ===== Audit ===== */
+function subscribeAudit(){
+  const list=$("#auditList"); const weekStartISO=toISODate(currentWeekStart);
+  if (unsubAudit){ try{unsubAudit();}catch{}; unsubAudit=null; }
+  unsubAudit = API.onAudit(weekStartISO, (arr)=>{
+    if(!arr.length){ list.textContent='Noch keine Einträge.'; return; }
+    list.innerHTML='';
+    arr.forEach(a=>{
+      const div=document.createElement('div'); div.className='auditItem';
+      const when=(a.when?new Date(a.when).toLocaleString('de-AT'):'—');
+      const label=a.action==='create'?'erstellt':(a.action==='delete'?'gelöscht':'aktualisiert');
+      div.innerHTML=`<span class="tag">${label}</span> <span><strong>${escapeHtml(a.title||'Block')}</strong></span> <span class="muted">(${when} von ${escapeHtml(a.whoName||'unbekannt')})</span>`;
+      list.appendChild(div);
+    });
+  });
+}
+
+/* ===== Start ===== */
+(function start(){
+  renderWeek();
+  subscribeAudit();
+  // kleiner Selbsttest: Grid sollte 16 Kinder haben (1+7 Kopf, 1 Zeitspalte, 7 Tages-Spalten)
+  const tt=document.querySelector('#timetable');
+  if (tt.children.length !== 16) console.warn('[Hinweis] Timetable Aufbau unerwartet:', tt.children.length);
+})();
+</script>
 </body>
 </html>
