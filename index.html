@@ -127,18 +127,46 @@
       showFlash('Liste geleert.');
     }
 
-    function updateNavForAuth(){
-      const container=document.getElementById('nav-cta');
-      if(!container) return;
-      container.innerHTML='';
-      if(isAuthed()){
-       const staffBtn = document.createElement('a');
-staffBtn.className = 'btn';
-staffBtn.textContent = '📅 Mitarbeiter-Infos';
-staffBtn.href = 'mitarbeiter-infos.html';
-staffBtn.addEventListener('click', (e) => {
-  e.preventDefault();
-  window.location.assign(staffBtn.href);
+   function updateNavForAuth(){
+  const container = document.getElementById('nav-cta');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (isAuthed()) {
+    // Mitarbeiter-Infos: echter Link
+    const staffBtn = document.createElement('a');
+    staffBtn.className = 'btn';
+    staffBtn.textContent = '📅 Mitarbeiter-Infos';
+    // robustes Ziel im selben Ordner wie index.html
+    staffBtn.href = new URL('./mitarbeiter-infos.html', location.href).toString();
+
+    // Fallback: erzwinge Navigation auch wenn irgendein Handler Links abfängt
+    staffBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.assign(staffBtn.href);
+    });
+
+    // Logout bleibt wie gehabt
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn';
+    logoutBtn.textContent = 'Logout';
+    logoutBtn.style.marginLeft = '8px';
+    logoutBtn.onclick = logout;
+
+    container.appendChild(staffBtn);
+    container.appendChild(logoutBtn);
+  } else {
+    const loginBtn = document.createElement('button');
+    loginBtn.className = 'btn';
+    loginBtn.textContent = 'Login Mitarbeiter';
+    loginBtn.onclick = openLogin;
+    container.appendChild(loginBtn);
+  }
+}
+
+</script>
+
 });
 
         const logoutBtn=document.createElement('button'); logoutBtn.className='btn'; logoutBtn.textContent='Logout'; logoutBtn.style.marginLeft='8px'; logoutBtn.onclick=logout;
